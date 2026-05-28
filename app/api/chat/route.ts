@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { appGraph } from "@/lib/langgraph";
+import { seedLegalDocs } from "@/lib/rag/seedDocs";
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +13,9 @@ export async function POST(req: Request) {
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
     }
+
+    // Seed PDFs on first message only
+    await seedLegalDocs();
 
     const initialState = {
       input: message,

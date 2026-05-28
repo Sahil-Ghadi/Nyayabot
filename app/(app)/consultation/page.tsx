@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Send, History as HistoryIcon, Search, AlertCircle, Shield, Scale, Map, Info, Paperclip, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Send, History as HistoryIcon, AlertCircle, Shield, Scale, Info, Paperclip, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { createChat, addMessage, getUserChats, getMessages } from "@/lib/firestore";
 
@@ -48,14 +50,12 @@ export default function ConsultationPage() {
     if (!chatId) {
       chatId = await createChat(user.uid, userMessageContent.substring(0, 30) + "...");
       setCurrentChatId(chatId);
-      loadChats(); // refresh sidebar
+      loadChats();
     }
 
-    // Optimistic UI for User Message
     const userMsgObj = { role: "user", content: userMessageContent };
     setMessages((prev) => [...prev, userMsgObj]);
-    
-    // Save User message to Firestore
+
     await addMessage(chatId, "user", userMessageContent);
 
     try {
@@ -66,15 +66,13 @@ export default function ConsultationPage() {
       });
 
       const data = await response.json();
-      
+
       if (data.response) {
-        // Save AI message to Firestore
         await addMessage(chatId, "assistant", data.response, { classification: data.classification });
-        
-        // Update UI
+
         setMessages((prev) => [
-          ...prev, 
-          { role: "assistant", content: data.response, classification: data.classification }
+          ...prev,
+          { role: "assistant", content: data.response, classification: data.classification },
         ]);
       }
     } catch (error) {
@@ -93,20 +91,24 @@ export default function ConsultationPage() {
             <HistoryIcon className="w-4 h-4" />
             <span className="font-serif text-sm font-bold uppercase tracking-widest">History</span>
           </div>
-          <button 
+          <button
             onClick={() => { setCurrentChatId(null); setMessages([]); }}
             className="text-xs text-brand-text-secondary hover:text-white"
           >
             New Chat
           </button>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto space-y-2 pr-2">
           {chats.map((chat) => (
-            <div 
-              key={chat.id} 
+            <div
+              key={chat.id}
               onClick={() => loadChatHistory(chat.id)}
-              className={`p-3 rounded-xl cursor-pointer transition-colors ${currentChatId === chat.id ? 'bg-white/10 text-white' : 'text-brand-text-secondary hover:bg-white/5 hover:text-white'}`}
+              className={`p-3 rounded-xl cursor-pointer transition-colors ${
+                currentChatId === chat.id
+                  ? "bg-white/10 text-white"
+                  : "text-brand-text-secondary hover:bg-white/5 hover:text-white"
+              }`}
             >
               <p className="text-sm font-medium truncate">{chat.title}</p>
             </div>
@@ -117,7 +119,7 @@ export default function ConsultationPage() {
       {/* Center Panel: AI Conversation */}
       <div className="flex-1 flex flex-col relative max-w-3xl mx-auto w-full">
         <div className="flex-1 overflow-y-auto pb-32 pt-4 space-y-8 scroll-smooth pr-4 custom-scrollbar">
-          
+
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center opacity-50">
               <Scale className="w-16 h-16 text-brand-gold mb-4" />
@@ -126,13 +128,13 @@ export default function ConsultationPage() {
           )}
 
           {messages.map((msg, i) => (
-            <motion.div 
+            <motion.div
               key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.role === 'user' ? (
+              {msg.role === "user" ? (
                 <div className="bg-white/5 border border-white/10 p-5 rounded-2xl rounded-tr-sm max-w-[85%] backdrop-blur-sm">
                   <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                 </div>
@@ -142,31 +144,75 @@ export default function ConsultationPage() {
                     <div className="flex items-center gap-2">
                       <div className="px-3 py-1 bg-brand-gold/10 border border-brand-gold/30 rounded-full flex items-center gap-2">
                         <AlertCircle className="w-3.5 h-3.5 text-brand-gold" />
-                        <span className="text-[10px] font-bold tracking-widest text-brand-gold uppercase">{msg.classification || msg.metadata?.classification}</span>
+                        <span className="text-[10px] font-bold tracking-widest text-brand-gold uppercase">
+                          {msg.classification || msg.metadata?.classification}
+                        </span>
                       </div>
                     </div>
                   )}
 
                   <div className="glass-panel p-6 sm:p-8 rounded-2xl rounded-tl-sm border-white/10 relative overflow-hidden shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
                     <div className="absolute top-0 left-0 w-1 h-full bg-brand-gold" />
-                    
-                    <h3 className="font-serif text-2xl font-bold mb-4">Legal Evaluation</h3>
-                    <div className="text-brand-text-secondary leading-relaxed mb-6 whitespace-pre-wrap">
-                      {msg.content}
-                    </div>
-                    
-                    {/* Disclaimer */}
-                    <div className="mt-8 p-4 bg-black/40 rounded-xl border border-white/5 flex gap-3">
-                      <Info className="w-5 h-5 text-brand-text-secondary shrink-0 mt-0.5" />
-                      <p className="text-xs text-brand-text-secondary leading-relaxed">
-                        This analysis is for informational purposes and does not constitute formal legal advice. Please consult an advocate before filing matters in court.
-                      </p>
+
+                    {/* Rendered Markdown Response */}
+                    <div className="text-brand-text-secondary leading-relaxed">
+                      <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                        components={{
+                          h2: ({ children }) => (
+                            <h2 className="text-brand-gold font-bold text-base mt-6 mb-3 first:mt-0">
+                              {children}
+                            </h2>
+                          ),
+                          p: ({ children }) => (
+                            <p className="text-white/80 my-2 leading-relaxed text-sm">{children}</p>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="text-white font-semibold">{children}</strong>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-2 border-brand-gold pl-4 text-white/70 italic my-3 bg-white/5 py-2 pr-3 rounded-r-lg">
+                              {children}
+                            </blockquote>
+                          ),
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto my-4 rounded-lg border border-white/10">
+                              <table className="w-full border-collapse text-sm">{children}</table>
+                            </div>
+                          ),
+                          th: ({ children }) => (
+                            <th className="border border-brand-gold/30 bg-brand-gold/10 px-3 py-2 text-left text-brand-gold font-semibold text-xs uppercase tracking-wider">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="border border-white/10 px-3 py-2 text-white/75 text-sm">
+                              {children}
+                            </td>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="my-3 space-y-1">{children}</ul>
+                          ),
+                          li: ({ children }) => (
+                            <li className="ml-5 my-1.5 text-white/80 text-sm list-disc">
+                              {children}
+                            </li>
+                          ),
+                          hr: () => <hr className="border-white/10 my-4" />,
+                          em: ({ children }) => (
+                            <em className="text-white/40 text-xs not-italic">{children}</em>
+                          ),
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 </div>
               )}
             </motion.div>
           ))}
+
           {isLoading && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-brand-gold">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -184,16 +230,16 @@ export default function ConsultationPage() {
               <button className="p-3 text-brand-text-secondary hover:text-white transition-colors">
                 <Paperclip className="w-5 h-5" />
               </button>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Describe your workplace situation..." 
+                onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                placeholder="Describe your workplace situation..."
                 className="flex-1 bg-transparent outline-none text-white placeholder:text-white/20 text-sm md:text-base px-2"
                 disabled={isLoading}
               />
-              <button 
+              <button
                 onClick={handleSendMessage}
                 disabled={isLoading || !inputValue.trim()}
                 className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:bg-brand-gold transition-colors hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
@@ -208,7 +254,7 @@ export default function ConsultationPage() {
         </div>
       </div>
 
-      {/* Right Panel: Legal References (Static for now) */}
+      {/* Right Panel: Legal References */}
       <div className="hidden xl:flex w-80 flex-col gap-4 border-l border-white/5 pl-6">
         <div className="flex items-center gap-2 mb-2 text-brand-gold">
           <Scale className="w-4 h-4" />
@@ -216,7 +262,7 @@ export default function ConsultationPage() {
         </div>
 
         <div className="space-y-4">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5, duration: 0.4 }}
