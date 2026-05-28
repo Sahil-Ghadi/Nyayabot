@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { appGraph } from "@/lib/langgraph";
-import { seedLegalDocs } from "@/lib/rag/seedDocs";
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const token = authHeader.split("Bearer ")[1];
+    // TODO: Verify Firebase token using firebase-admin for full security
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { message, history = [] } = await req.json();
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -14,11 +23,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
     }
 
-    // Seed PDFs on first message only
-    await seedLegalDocs();
-
     const initialState = {
       input: message,
+      messages: history, // Pass history to langgraph
     };
 
     const finalState = await appGraph.invoke(initialState);

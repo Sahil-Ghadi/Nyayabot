@@ -12,7 +12,7 @@ export default function AppLayout({
       
       <Sidebar />
       <main className="flex-1 overflow-y-auto h-screen p-8 relative z-10 scroll-smooth">
-        <div className="max-w-6xl mx-auto h-full">
+        <div className="w-full max-w-screen-2xl mx-auto h-full">
           {children}
         </div>
       </main>

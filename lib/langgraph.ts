@@ -1,6 +1,7 @@
 import { StateGraph, Annotation } from "@langchain/langgraph";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatOllama } from "@langchain/ollama";
 import { similaritySearch } from "./rag/vectorStore";
+import { z } from "zod";
 
 export const ChatStateAnnotation = Annotation.Root({
   input: Annotation<string>({
@@ -19,9 +20,13 @@ export const ChatStateAnnotation = Annotation.Root({
     reducer: (x, y) => y ?? x,
     default: () => "",
   }),
-  response: Annotation<string>({
+  messages: Annotation<any[]>({
     reducer: (x, y) => y ?? x,
-    default: () => "",
+    default: () => [],
+  }),
+  response: Annotation<any>({
+    reducer: (x, y) => y ?? x,
+    default: () => null,
   }),
   citations: Annotation<any[]>({
     reducer: (x, y) => y ?? x,
@@ -30,9 +35,8 @@ export const ChatStateAnnotation = Annotation.Root({
 });
 
 const getModel = () =>
-  new ChatGoogleGenerativeAI({
-    model: "gemini-2.5-flash",
-    apiKey: process.env.GEMINI_API_KEY,
+  new ChatOllama({
+    model: "qwen2.5:3b",
     temperature: 0.1,
   });
 
@@ -44,9 +48,12 @@ const validateInput = (state: typeof ChatStateAnnotation.State) => {
   return { input: state.input.trim() };
 };
 
-// ── Node: Classify Issue (keyword-first, LLM fallback) ───────────────────────
 const classifyIssue = async (state: typeof ChatStateAnnotation.State) => {
-  const text = state.input.toLowerCase();
+  const text = state.input.toLowerCase().trim();
+
+  if (/^(hi|hello|hey|greetings|good morning|good afternoon|thanks|thank you)/i.test(text)) {
+    return { classification: "GREETING" };
+  }
 
   const rules: [RegExp, string][] = [
     [/\b(posh|sexual.?harass|harass|inappropri|misconduct|hostile.work|unwanted.advanc)\b/, "POSH"],
@@ -62,14 +69,14 @@ const classifyIssue = async (state: typeof ChatStateAnnotation.State) => {
   // LLM fallback only when keyword match fails
   const model = getModel();
   const result = await model.invoke(
-    `Classify this workplace issue into exactly one of: SALARY_DISPUTE, WRONGFUL_TERMINATION, POSH, LEAVE_DENIAL, OTHER_LABOUR.\n\nIssue: "${state.input}"\n\nRespond with ONLY the category name.`
+    `Classify this workplace issue into exactly one of: SALARY_DISPUTE, WRONGFUL_TERMINATION, POSH, LEAVE_DENIAL, OTHER_LABOUR, GREETING, NON_LEGAL.\n\nIssue: "${state.input}"\n\nRespond with ONLY the category name.`
   );
   return { classification: result.content.toString().trim() };
 };
 
 // ── Node: Retrieve Documents ──────────────────────────────────────────────────
 const retrieveDocuments = async (state: typeof ChatStateAnnotation.State) => {
-  const docs = await similaritySearch(state.input, 8);
+  const docs = await similaritySearch(state.input, 4);
   return { retrievedDocs: docs };
 };
 
@@ -93,9 +100,35 @@ const buildContext = (state: typeof ChatStateAnnotation.State) => {
   return { context: contextStr, citations };
 };
 
+// ── Zod Schema for Structured Output ──────────────────────────────────────────
+const LegalResponseSchema = z.object({
+  assessment: z.string().describe("1-2 sentence plain-English summary of the legal position. BE EXTREMELY BRIEF."),
+  applicableLaws: z.array(
+    z.object({
+      law: z.string().describe("Name of the Act (e.g., POSH Act)"),
+      section: z.string().describe("Section number"),
+      meaning: z.string().describe("One-line explanation (max 15 words)")
+    })
+  ).describe("List 1 or 2 most relevant laws. DO NOT list more than 2."),
+  actionPlan: z.array(
+    z.object({
+      stepTitle: z.string().describe("Short action name (e.g., 'File Complaint', not 'Step 1')"),
+      action: z.string().describe("Concrete action (max 20 words). Name the exact office.")
+    })
+  ).describe("Step by step action plan. EXACTLY 3 steps. KEEP IT SHORT."),
+  evidence: z.array(
+    z.object({
+      item: z.string().describe("Document name"),
+      reason: z.string().describe("Why it matters (max 10 words)")
+    })
+  ).describe("List 1 to 3 items to collect"),
+  deadlines: z.array(z.string()).describe("List 1 or 2 key deadlines (max 10 words each)")
+});
+
 // ── Node: Generate Response ───────────────────────────────────────────────────
 const generateResponse = async (state: typeof ChatStateAnnotation.State) => {
   const model = getModel();
+  const structuredModel = model.withStructuredOutput(LegalResponseSchema);
 
   const categoryLabels: Record<string, string> = {
     POSH: "Sexual Harassment / POSH",
@@ -107,88 +140,70 @@ const generateResponse = async (state: typeof ChatStateAnnotation.State) => {
   };
   const issueLabel = categoryLabels[state.classification] ?? "Workplace Issue";
 
-  const prompt = `You are NyayaBot, a knowledgeable Indian labour law assistant.
+  const historyText = (state.messages || []).map(m => `${m.role}: ${m.content}`).join("\n");
 
-STRICT RULES:
-1. Use ONLY the legal context provided below — never invent or assume any law, section, or provision.
-2. If the context does not cover a specific point, provide general guidance from well-known Indian labour law principles (Industrial Disputes Act, Factories Act, POSH Act, Payment of Wages Act) without citing specific sections unless they appear in the context.
-3. NEVER say "the document corpus does not contain…" or "I cannot find in the context…" — just answer helpfully with what you know or advise consulting a lawyer.
-4. Respond ONLY using the exact markdown structure below. Do not add any extra headings or sections.
-5. NEVER use vague phrases like "appropriate authority", "relevant body", or "concerned department". 
-   Always name the exact office: Labour Commissioner, ESIC office, Industrial Tribunal, Labour Court, 
-   District Magistrate, etc. If the exact office depends on the state, say 
-   "visit the Labour Commissioner's office in your district/city."
----
+  const prompt = `You are NyayaBot, a strict Indian labour law assistant.
+
+CRITICAL RULES FOR BREVITY (VIOLATION WILL CAUSE SYSTEM CRASH):
+1. BE EXTREMELY CONCISE. Your response takes time to generate, so keep every string under 20 words where possible.
+2. Only list a MAXIMUM of 2 Applicable Laws. Do NOT hallucinate 6 sections.
+3. Action Plan MUST have exactly 3 steps. Never use "Step 1" as a title, use actual action names (e.g. "Draft Complaint").
+4. Evidence MUST have a maximum of 3 items.
+5. Do NOT invent legal procedures. Use the provided context. If context is missing, use general POSH/Labour law knowledge but keep it brief.
+6. Name exact offices (Labour Court, ICC) instead of "appropriate authority".
+
+CONVERSATION HISTORY:
+${historyText}
 
 LEGAL CONTEXT:
 ${state.context}
 
 ISSUE TYPE: ${issueLabel}
-USER QUERY: ${state.input}
+USER QUERY: ${state.input}`;
 
----
+  const result = await structuredModel.invoke(prompt);
+  return { response: result };
+};
 
-Respond in this EXACT format:
+// ── Node: Generate Conversational Response ────────────────────────────────────
+const generateConversationalResponse = async (state: typeof ChatStateAnnotation.State) => {
+  const model = getModel();
+  const historyText = (state.messages || []).map(m => `${m.role}: ${m.content}`).join("\n");
 
-## ⚖️ Legal Assessment
-> [2–3 sentence plain-English summary of whether the user has a valid grievance and what their core legal position is]
+  const prompt = `You are NyayaBot, an AI assistant for Indian labour law.
+The user's query is non-legal or a greeting. Respond politely and concisely. If they say hi, greet them back and ask how you can help with their workplace issues.
 
----
+Conversation History:
+${historyText}
 
-## 📜 Applicable Laws & Provisions
-| Law / Act | Section | What It Means For You |
-|---|---|---|
-| [Act name] | Sec. [X] | [One-line plain explanation] |
-[Add one row per applicable provision. If no specific section is known, write "General provision".]
-
----
-
-## 🗺️ Your Action Plan
-**Step 1 — [Short title]**
-→ [Concrete action: who to contact, what to say, what to submit]
-
-**Step 2 — [Short title]**
-→ [Next step with specifics]
-
-**Step 3 — [Short title]**
-→ [If escalation needed, name the exact next body: Labour Court, ESIC office, Industrial Tribunal, High Court. Never say "appropriate authority" — always name it.]
-
-[3–5 steps total. Every step must have a real person/office/action, not a placeholder.]
-
----
-
-## 📂 Evidence to Collect
-- **[Document/item]** — [Why it matters]
-- **[Document/item]** — [Why it matters]
-[List 3–6 items]
-
----
-
-## ⏱️ Key Deadlines
-- [Deadline or time limit with brief explanation]
-- [Add another if applicable; if none known, write "File your complaint at the earliest — delays can weaken your case."]
-
----
-
-## ⚠️ Disclaimer
-*This is general legal information based on Indian labour law. It is not a substitute for professional legal advice. For serious matters, consult a qualified labour law advocate or visit your nearest Labour Commissioner's office.*`;
-
+User Query: ${state.input}
+`;
   const result = await model.invoke(prompt);
   return { response: result.content.toString() };
 };
 
 // ── Graph ─────────────────────────────────────────────────────────────────────
+
+const routeAfterClassification = (state: typeof ChatStateAnnotation.State) => {
+  if (state.classification === "GREETING" || state.classification === "NON_LEGAL") {
+    return "generateConversationalResponse";
+  }
+  return "retrieveDocuments";
+};
+
 const workflow = new StateGraph(ChatStateAnnotation)
   .addNode("validateInput", validateInput)
   .addNode("classifyIssue", classifyIssue)
   .addNode("retrieveDocuments", retrieveDocuments)
   .addNode("buildContext", buildContext)
   .addNode("generateResponse", generateResponse)
+  .addNode("generateConversationalResponse", generateConversationalResponse)
   .addEdge("__start__", "validateInput")
   .addEdge("validateInput", "classifyIssue")
-  .addEdge("classifyIssue", "retrieveDocuments")
+  .addConditionalEdges("classifyIssue", routeAfterClassification)
   .addEdge("retrieveDocuments", "buildContext")
   .addEdge("buildContext", "generateResponse")
-  .addEdge("generateResponse", "__end__");
+  .addEdge("generateResponse", "__end__")
+  .addEdge("generateConversationalResponse", "__end__");
 
 export const appGraph = workflow.compile();

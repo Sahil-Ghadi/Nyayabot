@@ -9,12 +9,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "New Consultation", href: "/consultation", icon: MessageSquarePlus },
   { name: "Case History", href: "/history", icon: History },
   { name: "Rights Library", href: "/library", icon: BookOpen },
-  { name: "Saved Cases", href: "/saved", icon: Bookmark },
+  { name: "Admin Tools", href: "/admin/documents", icon: Settings },
   { name: "Profile", href: "/profile", icon: User },
-  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -26,15 +24,26 @@ export function Sidebar() {
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className="w-64 shrink-0 p-6 flex flex-col h-screen sticky top-0"
+      className="w-80 shrink-0 p-6 flex flex-col h-screen sticky top-0"
     >
       <div className="glass-panel flex-1 rounded-[24px] p-6 flex flex-col relative overflow-hidden border-glow">
-        <div className="flex items-center gap-3 mb-10">
+        <div className="flex items-center gap-3 mb-8">
           <div className="w-8 h-8 rounded-full bg-brand-gold flex items-center justify-center">
             <span className="font-serif text-black font-bold text-xl">N</span>
           </div>
           <span className="font-serif text-2xl font-bold tracking-wide">NyayaBot</span>
         </div>
+
+        <button 
+          onClick={() => {
+            sessionStorage.removeItem("currentChatId");
+            window.location.href = "/consultation";
+          }}
+          className="mb-8 w-full py-3 bg-brand-gold hover:bg-brand-gold-soft text-black font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(212,175,55,0.3)] hover:shadow-[0_0_25px_rgba(212,175,55,0.5)]"
+        >
+          <MessageSquarePlus className="w-5 h-5" />
+          New Consultation
+        </button>
 
         <nav className="flex flex-col gap-2 relative z-10">
           {navItems.map((item) => {

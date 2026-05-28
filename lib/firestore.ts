@@ -34,7 +34,7 @@ export const createChat = async (userId: string, title: string) => {
   return chatRef.id;
 };
 
-export const addMessage = async (chatId: string, role: "user" | "assistant", content: string, metadata?: any) => {
+export const addMessage = async (chatId: string, role: "user" | "assistant", content: any, metadata?: any) => {
   const msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), {
     role,
     content,
@@ -50,8 +50,16 @@ export const getMessages = async (chatId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+import { where } from "firebase/firestore";
+
 export const getUserChats = async (userId: string) => {
-  const q = query(collection(db, "chats"), orderBy("updatedAt", "desc"));
+  const q = query(collection(db, "chats"), where("userId", "==", userId));
   const snapshot = await getDocs(q);
-  return snapshot.docs.filter(doc => doc.data().userId === userId).map(doc => ({ id: doc.id, ...doc.data() }));
+  const chats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  // Sort in memory to avoid needing a Firestore composite index
+  return chats.sort((a: any, b: any) => {
+    const timeA = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : 0;
+    const timeB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : 0;
+    return timeB - timeA;
+  });
 };

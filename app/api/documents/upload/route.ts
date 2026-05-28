@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import * as pdf from "pdf-parse";
 import { chunkDocument } from "@/lib/rag/chunkDocs";
 import { insertDocuments } from "@/lib/rag/vectorStore";
+import fs from "fs";
+import path from "path";
 
-// Handle default export difference between ESM and CJS for pdf-parse
-const pdfParse = (typeof pdf === "function" ? pdf : (pdf as any).default) as any;
-
+const pdfParse = require("pdf-parse-fork");
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,6 +19,14 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     
+    // Save PDF to docs folder
+    const docsDir = path.join(process.cwd(), "docs");
+    if (!fs.existsSync(docsDir)) {
+      fs.mkdirSync(docsDir, { recursive: true });
+    }
+    const filePath = path.join(docsDir, file.name);
+    fs.writeFileSync(filePath, buffer);
+
     // Parse PDF
     const data = await pdfParse(buffer);
     const rawText = data.text;

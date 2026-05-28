@@ -27,17 +27,27 @@ class SimpleMemoryVectorStore {
 
   constructor() {}
 
-  async addDocuments(docs: any[]) {
-    const embeddingsService = getEmbeddings();
-    const texts = docs.map(d => d.pageContent || d.text || "");
-    const embeddings = await embeddingsService.embedDocuments(texts);
-    for (let i = 0; i < docs.length; i++) {
-      this.documents.push({
-        pageContent: docs[i].pageContent || docs[i].text || "",
-        metadata: docs[i].metadata || {},
-        embedding: embeddings[i],
-      });
+  async loadFromJSON() {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const outPath = path.join(process.cwd(), "lib/rag/precomputed-embeddings.json");
+      if (fs.existsSync(outPath)) {
+        const data = fs.readFileSync(outPath, "utf-8");
+        this.documents = JSON.parse(data);
+      }
+    } catch (e) {
+      console.warn("⚠️ No precomputed embeddings found. Vector store is empty.");
+      this.documents = [];
     }
+  }
+
+  async addDocuments(newDocs: EmbeddedDoc[]) {
+    this.documents.push(...newDocs);
+    const fs = await import("fs");
+    const path = await import("path");
+    const outPath = path.join(process.cwd(), "lib/rag/precomputed-embeddings.json");
+    fs.writeFileSync(outPath, JSON.stringify(this.documents, null, 2));
   }
 
   async similaritySearchWithScore(query: string, k: number = 5): Promise<Array<[any, number]>> {
@@ -62,13 +72,9 @@ let vectorStoreInstance: SimpleMemoryVectorStore | null = null;
 export const getVectorStore = async () => {
   if (!vectorStoreInstance) {
     vectorStoreInstance = new SimpleMemoryVectorStore();
+    await vectorStoreInstance.loadFromJSON();
   }
   return vectorStoreInstance;
-};
-
-export const insertDocuments = async (docs: any[]) => {
-  const store = await getVectorStore();
-  await store.addDocuments(docs);
 };
 
 export const similaritySearch = async (query: string, k: number = 5) => {
@@ -82,5 +88,21 @@ export const similaritySearch = async (query: string, k: number = 5) => {
     metadata: doc.metadata,
     relevanceScore: score,
   }));
+};
+
+export const insertDocuments = async (docs: any[]) => {
+  const store = await getVectorStore();
+  const embeddingsService = getEmbeddings();
+  
+  const texts = docs.map(d => d.pageContent);
+  const embeddings = await embeddingsService.embedDocuments(texts);
+  
+  const newEmbeddedDocs: EmbeddedDoc[] = docs.map((doc, idx) => ({
+    pageContent: doc.pageContent,
+    metadata: doc.metadata,
+    embedding: embeddings[idx]
+  }));
+  
+  await store.addDocuments(newEmbeddedDocs);
 };
 

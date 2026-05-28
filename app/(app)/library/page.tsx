@@ -1,14 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Scale, ShieldAlert, FileText, Briefcase, Baby, Clock } from "lucide-react";
+import { Scale, ShieldAlert, FileText, Briefcase, Users, Clock } from "lucide-react";
 
 const categories = [
   { icon: Scale, title: "Salary & Wages", desc: "Understanding minimum wage, overtime, and deductions." },
   { icon: ShieldAlert, title: "Wrongful Termination", desc: "Your rights when facing dismissal without cause." },
   { icon: FileText, title: "Employment Contracts", desc: "Decoding complex clauses, non-competes, and NDAs." },
   { icon: Clock, title: "Leave Rights", desc: "Sick leave, casual leave, and earned privileges." },
-  { icon: Baby, title: "Maternity Benefits", desc: "Rights, paid leave, and protections under the Act." },
+  { icon: Users, title: "Maternity Benefits", desc: "Rights, paid leave, and protections under the Act." },
   { icon: Briefcase, title: "Workplace Harassment", desc: "POSH guidelines and raising official grievances." },
 ];
 
