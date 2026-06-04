@@ -2,6 +2,7 @@ import { StateGraph, Annotation } from "@langchain/langgraph";
 import { ChatOllama } from "@langchain/ollama";
 import { similaritySearch } from "./rag/vectorStore";
 import { z } from "zod";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 export const ChatStateAnnotation = Annotation.Root({
   input: Annotation<string>({
@@ -35,9 +36,10 @@ export const ChatStateAnnotation = Annotation.Root({
 });
 
 const getModel = () =>
-  new ChatOllama({
-    model: "qwen2.5:3b",
+  new ChatGoogleGenerativeAI({
+    model: "gemini-2.5-flash",
     temperature: 0.1,
+    apiKey: process.env.GEMINI_API_KEY,
   });
 
 // ── Node: Validate Input ──────────────────────────────────────────────────────
