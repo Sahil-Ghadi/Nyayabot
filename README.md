@@ -3,7 +3,7 @@
 ## 1. Executive Summary
 **NyayaBot** is an AI-powered Employee Rights Awareness Platform designed specifically for the Indian corporate and private sector. It serves as a first-point-of-contact legal assistant, allowing employees to describe workplace issues in plain, natural language and receive structured, law-grounded guidance. 
 
-By leveraging a completely local Retrieval-Augmented Generation (RAG) pipeline, NyayaBot ensures that its advice is grounded in actual Indian employment legislation (e.g., POSH Act, Minimum Wages Act, Industrial Disputes Act) rather than relying solely on an AI's pre-trained memory.
+By leveraging a completely local Retrieval-Augmented Generation (RAG) pipeline, NyayaBot ensures that its advice is grounded in actual Indian employment legislation (e.g., POSH Act, Code on Wages, Industrial Relations Code) rather than relying solely on an AI's pre-trained memory.
 
 ## 2. Core Features
 *   **Conversational Legal Assistant:** A chat interface where users can ask complex legal questions and receive structured outputs, including a situation assessment, applicable laws, and a step-by-step action plan.

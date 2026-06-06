@@ -3,9 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUserChats } from "@/lib/firestore";
-import { motion } from "framer-motion";
-import { History, MessageSquare, ChevronRight, Loader2 } from "lucide-react";
+import { getUserChats, updateChatStatus } from "@/lib/firestore";
+import Link from "next/link";
 
 export default function HistoryPage() {
   const { user } = useAuth();
@@ -22,63 +21,119 @@ export default function HistoryPage() {
     }
   }, [user]);
 
+  const handleStatusChange = async (chatId: string, status: "active" | "resolved", e: React.MouseEvent | React.ChangeEvent) => {
+    e.stopPropagation();
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, status } : c));
+    await updateChatStatus(chatId, status);
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 text-brand-gold animate-spin" />
+      <div className="flex items-center justify-center h-full min-h-[50vh]">
+        <span className="material-symbols-outlined animate-spin text-primary text-4xl">sync</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full animate-fade-in pb-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-white mb-2 flex items-center gap-3">
-          <History className="w-8 h-8 text-brand-gold" />
-          Case History
-        </h1>
-        <p className="text-brand-text-secondary">View and continue your previous legal consultations.</p>
-      </div>
-
-      {chats.length === 0 ? (
-        <div className="glass-panel p-12 rounded-2xl flex flex-col items-center justify-center text-center border-dashed border-2 border-white/10">
-          <MessageSquare className="w-12 h-12 text-brand-gold mb-4 opacity-50" />
-          <h3 className="text-xl font-bold text-white mb-2">No past consultations</h3>
-          <p className="text-brand-text-secondary mb-6">You haven't started any consultations yet.</p>
-          <button 
-            onClick={() => router.push("/consultation")}
-            className="px-6 py-3 bg-brand-gold text-black font-medium rounded-full hover:scale-105 transition-transform"
-          >
-            Start New Consultation
+    <div className="p-gutter max-w-container-max mx-auto w-full flex flex-col gap-8 pb-24">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-4">
+        <div>
+          <h2 className="text-headline-md font-headline-md text-on-surface mb-2">
+            All Consultations
+          </h2>
+          <p className="text-body-md font-body-md text-on-surface-variant max-w-2xl">
+            Review and manage your past legal inquiries. Click on any record to view the full assessment and continue the dialogue.
+          </p>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
+          <button className="bg-transparent border border-white/10 text-on-surface-variant hover:text-on-surface hover:bg-white/5 font-label-sm text-label-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">filter_list</span>
+            Filter
+          </button>
+          <button className="bg-transparent border border-white/10 text-on-surface-variant hover:text-on-surface hover:bg-white/5 font-label-sm text-label-sm px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">sort</span>
+            Sort
           </button>
         </div>
+      </header>
+
+      {chats.length === 0 ? (
+        <div className="glass-panel rounded-xl p-12 flex flex-col items-center justify-center text-center border-dashed border-2 border-white/10 mt-8">
+          <div className="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center mb-4">
+            <span className="material-symbols-outlined text-[32px] text-on-surface-variant">chat_bubble_outline</span>
+          </div>
+          <h3 className="text-title-lg font-title-lg text-on-surface mb-2">No past consultations</h3>
+          <p className="text-body-md text-on-surface-variant mb-8 max-w-md">
+            You haven't started any legal consultations yet. Start a new one to get AI-powered labour law guidance.
+          </p>
+          <Link 
+            href="/consultation"
+            className="bg-primary text-on-primary font-label-sm text-label-sm py-3 px-6 rounded-lg inline-flex items-center gap-2 hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Start New Consultation
+          </Link>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {chats.map((chat, idx) => (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
+        <div className="flex flex-col gap-4">
+          {chats.map((chat) => (
+            <div
               key={chat.id}
               onClick={() => {
                  sessionStorage.setItem("currentChatId", chat.id);
                  router.push("/consultation");
               }}
-              className="glass-panel p-6 rounded-2xl cursor-pointer group hover:border-brand-gold/50 transition-all duration-300 relative overflow-hidden"
+              className={`glass-panel rounded-xl p-5 flex items-center justify-between gap-6 hover:border-primary/40 hover:bg-white/[0.03] transition-all duration-300 group cursor-pointer relative overflow-hidden ${
+                chat.status === 'active' ? 'border-l-4 border-l-error' : ''
+              }`}
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-gold/5 rounded-full blur-3xl group-hover:bg-brand-gold/10 transition-colors" />
-              <div className="flex items-start justify-between mb-4 relative z-10">
-                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-brand-gold">
-                  <MessageSquare className="w-5 h-5" />
+              {/* Left Section */}
+              <div className="flex items-center gap-5 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-surface-container-highest/50 flex items-center justify-center border border-white/5">
+                  <span className={`material-symbols-outlined text-[24px] ${chat.status === 'active' ? 'text-error' : 'text-on-surface-variant'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {chat.status === 'active' ? 'error' : 'chat'}
+                  </span>
                 </div>
-                <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-brand-gold transition-colors" />
+                <div className="flex flex-col justify-center min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h3 className="text-title-md font-title-md text-on-surface truncate">
+                      {chat.title === "New Consultation" || !chat.title ? "Labour Law Assessment" : chat.title}
+                    </h3>
+                    {/* Status Pill Dropdown */}
+                    <select 
+                      onClick={(e) => e.stopPropagation()}
+                      value={chat.status || "active"} 
+                      onChange={(e) => handleStatusChange(chat.id, e.target.value as any, e)}
+                      className={`appearance-none cursor-pointer inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider outline-none transition-all duration-200 hover:scale-105 ${
+                        chat.status === 'active' ? 'bg-error/10 border-error/20 text-error' : 
+                        'bg-surface-container-high border-white/10 text-on-surface-variant'
+                      }`}
+                    >
+                      <option value="active" className="bg-surface text-on-surface">Active</option>
+                      <option value="resolved" className="bg-surface text-on-surface">Resolved</option>
+                    </select>
+                  </div>
+                  <p className="text-body-sm font-body-sm text-on-surface-variant truncate w-full">
+                    "Select to view the complete history and details of this consultation thread..."
+                  </p>
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 line-clamp-2 relative z-10">{chat.title}</h3>
-              <p className="text-sm text-brand-text-secondary flex items-center gap-2 relative z-10">
-                <History className="w-3.5 h-3.5" />
-                {chat.updatedAt?.toDate ? new Date(chat.updatedAt.toDate()).toLocaleDateString() : "Recently"}
-              </p>
-            </motion.div>
+
+              {/* Right Section */}
+              <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 text-[12px] font-medium text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[14px]">schedule</span>
+                  {chat.updatedAt?.toDate ? new Date(chat.updatedAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : "Recently"}
+                </div>
+                <span className="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors opacity-60 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0">
+                  arrow_forward
+                </span>
+              </div>
+            </div>
           ))}
         </div>
       )}

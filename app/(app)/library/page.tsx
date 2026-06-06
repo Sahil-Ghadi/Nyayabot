@@ -9,13 +9,13 @@ const categories = [
     icon: Scale,
     title: "Salary & Wages",
     desc: "Understanding minimum wage, overtime, and deductions.",
-    googleQuery: "Payment of Wages Act 1936 India employee rights minimum wages",
+    googleQuery: "The Code on Wages 2019 India employee rights minimum wages",
   },
   {
     icon: ShieldAlert,
     title: "Wrongful Termination",
     desc: "Your rights when facing dismissal without cause.",
-    googleQuery: "Industrial Disputes Act wrongful termination retrenchment India employee rights",
+    googleQuery: "The Industrial Relations Code 2020 wrongful termination retrenchment India employee rights",
   },
   {
     icon: FileText,
@@ -27,13 +27,13 @@ const categories = [
     icon: Clock,
     title: "Leave Rights",
     desc: "Sick leave, casual leave, and earned privileges.",
-    googleQuery: "Factories Act 1948 leave rights sick leave casual leave India employee",
+    googleQuery: "OSHWC Code 2020 leave rights sick leave casual leave India employee",
   },
   {
     icon: Users,
     title: "Maternity Benefits",
     desc: "Rights, paid leave, and protections under the Act.",
-    googleQuery: "Maternity Benefit Act 1961 India paid leave 26 weeks employee rights",
+    googleQuery: "Code on Social Security 2020 maternity benefit paid leave 26 weeks India employee",
   },
   {
     icon: Briefcase,
@@ -43,7 +43,20 @@ const categories = [
   },
 ];
 
+import { useEffect, useState } from "react";
+
 export default function LibraryPage() {
+  const [uploadedDocs, setUploadedDocs] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/library/docs')
+      .then(res => res.json())
+      .then(data => {
+        if (data.docs) setUploadedDocs(data.docs);
+      })
+      .catch(err => console.error("Error loading uploaded docs:", err));
+  }, []);
+
   return (
     <div className="flex flex-col gap-8 pb-12">
       <div className="relative z-10">
@@ -55,7 +68,42 @@ export default function LibraryPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+      {/* Dynamic Uploaded Documents Section */}
+      {uploadedDocs.length > 0 && (
+        <>
+          <h2 className="text-2xl font-serif font-bold mt-4 mb-2 text-brand-gold">Newly Added Documents</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {uploadedDocs.map((doc, i) => (
+              <motion.div
+                key={doc.id}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: i * 0.05 }}
+                className="group glass-panel p-6 rounded-[20px] hover:border-tertiary/30 hover:shadow-[0_0_20px_rgba(212,175,55,0.1)] transition-all duration-300 flex flex-col h-full border border-tertiary/10"
+              >
+                <div className="w-12 h-12 rounded-xl bg-tertiary/10 border border-tertiary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                  <FileText className="w-6 h-6 text-tertiary" />
+                </div>
+
+                <h3 className="text-xl font-serif font-bold mb-2 group-hover:text-tertiary transition-colors">{doc.title}</h3>
+                <p className="text-brand-text-secondary text-sm leading-relaxed mb-6 flex-1">
+                  {doc.desc}
+                </p>
+
+                <div className="flex items-center gap-4 mt-auto">
+                  <span className="text-xs text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">
+                    Uploaded: {new Date(doc.uploadDate).toLocaleDateString()}
+                  </span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+          <hr className="border-white/5 my-4" />
+        </>
+      )}
+
+      <h2 className="text-2xl font-serif font-bold mt-4 mb-2">Core Categories</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {categories.map((cat, i) => {
           const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(cat.googleQuery)}`;
 

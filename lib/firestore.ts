@@ -28,6 +28,7 @@ export const createChat = async (userId: string, title: string) => {
   const chatRef = await addDoc(collection(db, "chats"), {
     userId,
     title,
+    status: "active",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -62,4 +63,12 @@ export const getUserChats = async (userId: string) => {
     const timeB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : 0;
     return timeB - timeA;
   });
+};
+
+export const updateChatStatus = async (chatId: string, status: "active" | "resolved") => {
+  const chatRef = doc(db, "chats", chatId);
+  await setDoc(chatRef, { 
+    status, 
+    updatedAt: serverTimestamp() 
+  }, { merge: true });
 };

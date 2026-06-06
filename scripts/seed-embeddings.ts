@@ -7,26 +7,50 @@ const pdfParse = require("pdf-parse-fork");
 // Load .env so Gemini API key is available
 dotenv.config();
 
-const parseChunks = (text: string, filename: string) => {
-  const chunks: any[] = [];
-  const chunkRegex = /=== CHUNK \d+ START ===([\s\S]*?)=== CHUNK \d+ END ===/g;
-  let match;
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
-  while ((match = chunkRegex.exec(text)) !== null) {
-    const chunkText = match[1].trim();
-    const titleMatch = chunkText.match(/Title:\s*(.+)/);
-    const keywordsMatch = chunkText.match(/Keywords:\s*(.+)/);
+// Cleans common noise from India Code PDFs
+const cleanIndiaCodeText = (text: string): string => {
+  let cleaned = text;
 
-    chunks.push({
-      pageContent: chunkText,
-      metadata: {
-        source: filename,
-        title: titleMatch?.[1]?.trim() || "",
-        keywords: keywordsMatch?.[1]?.trim() || "",
-      }
-    });
-  }
-  return chunks;
+  // 1. Remove Table of Contents (often labelled ARRANGEMENT OF SECTIONS)
+  const tocRegex = /ARRANGEMENT OF SECTIONS[\s\S]*?(?=CHAPTER I\b|THE [A-Z ]+ ACT)/i;
+  cleaned = cleaned.replace(tocRegex, "");
+
+  // 2. Remove typical official gazette headers/footers
+  cleaned = cleaned.replace(/THE GAZETTE OF INDIA EXTRAORDINARY/ig, "");
+  cleaned = cleaned.replace(/\[PART II—SEC\. \d\(i\)\]/ig, "");
+  
+  // 3. Remove legislative footnotes (e.g., "1. Ins. by Act 20 of 1983...")
+  const footnoteRegex = /^\s*\d+\.\s*(Ins\.|Subs\.|Omitted|Added)[^\n]+/gm;
+  cleaned = cleaned.replace(footnoteRegex, "");
+
+  // 4. Normalize spacing
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
+  return cleaned;
+};
+
+const parseChunks = async (text: string, filename: string) => {
+  const cleanedText = cleanIndiaCodeText(text);
+
+  // Use LangChain's intelligent text splitter to automatically chunk any raw PDF
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+  });
+
+  const docs = await splitter.createDocuments([cleanedText]);
+  
+  // Format the output to match what the embeddings script expects
+  return docs.map(doc => ({
+    pageContent: doc.pageContent,
+    metadata: {
+      source: filename,
+      title: filename.replace(".pdf", ""), // Default title to filename
+      keywords: "",
+    }
+  }));
 };
 
 const run = async () => {
@@ -45,7 +69,7 @@ const run = async () => {
     try {
       const buffer = fs.readFileSync(path.join(docsDir, file));
       const data = await pdfParse(buffer);
-      const chunks = parseChunks(data.text, file);
+      const chunks = await parseChunks(data.text, file);
 
       if (chunks.length > 0) {
         allDocs.push(...chunks);

@@ -19,21 +19,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
-    }
 
     const initialState = {
       input: message,
       messages: history, // Pass history to langgraph
     };
 
-    const finalState = await appGraph.invoke(initialState);
+    const stream = await appGraph.stream(initialState);
+    const encoder = new TextEncoder();
 
-    return NextResponse.json({
-      response: finalState.response,
-      classification: finalState.classification,
-      citations: finalState.citations,
+    const customReadable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            // chunk contains the state output from the node that just finished
+            const data = JSON.stringify(chunk);
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          }
+          controller.close();
+        } catch (err) {
+          console.error("Stream Error:", err);
+          controller.error(err);
+        }
+      },
+    });
+
+    return new Response(customReadable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
     });
   } catch (error: any) {
     console.error("Chat API Error:", error);

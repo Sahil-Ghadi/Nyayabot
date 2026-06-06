@@ -1,20 +1,43 @@
-import { Sidebar } from "@/components/Sidebar";
+"use client";
+
+import { SideNav } from "@/components/SideNav";
+import { TopNav } from "@/components/TopNav";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/");
+    }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <span className="material-symbols-outlined animate-spin text-[40px] text-primary">sync</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Prevent flash of content before redirect
+  }
+
   return (
-    <div className="flex min-h-screen bg-brand-bg relative overflow-hidden">
-      {/* Background glow for the whole app */}
-      <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brand-gold/5 rounded-full blur-[150px] pointer-events-none -translate-y-1/2 translate-x-1/3" />
-      
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto h-screen p-8 relative z-10 scroll-smooth">
-        <div className="w-full max-w-screen-2xl mx-auto h-full">
-          {children}
-        </div>
+    <div className="flex h-screen bg-background text-on-background antialiased selection:bg-primary-container selection:text-on-primary-container overflow-hidden">
+      <SideNav />
+      <main className="flex-1 flex flex-col h-screen overflow-y-auto relative">
+        <TopNav />
+        {children}
       </main>
     </div>
   );
