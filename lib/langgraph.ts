@@ -127,7 +127,51 @@ const LegalResponseSchema = z.object({
   deadlines: z.array(z.string()).describe("List 1 or 2 key deadlines (max 10 words each)")
 });
 
-// ── Node: Generate Response ───────────────────────────────────────────────────
+// Helper to format message content for the LLM history (resolving [object Object])
+const formatMessageContent = (content: any): string => {
+  if (typeof content === "string") return content;
+  if (typeof content === "object" && content !== null) {
+    let text = "";
+    if (content.assessment) {
+      text += `Assessment: ${content.assessment}\n`;
+    }
+    if (content.applicableLaws && Array.isArray(content.applicableLaws)) {
+      text += "Applicable Laws:\n";
+      content.applicableLaws.forEach((l: any) => {
+        text += `- ${l.law} (Section ${l.section}): ${l.meaning}\n`;
+      });
+    }
+    if (content.actionPlan && Array.isArray(content.actionPlan)) {
+      text += "Action Plan:\n";
+      content.actionPlan.forEach((s: any) => {
+        text += `- ${s.stepTitle}: ${s.action}\n`;
+      });
+    }
+    if (content.evidence && Array.isArray(content.evidence)) {
+      text += "Evidence to Collect:\n";
+      content.evidence.forEach((e: any) => {
+        text += `- ${e.item}: ${e.reason}\n`;
+      });
+    }
+    if (content.deadlines && Array.isArray(content.deadlines)) {
+      text += "Deadlines:\n";
+      content.deadlines.forEach((d: string) => {
+        text += `- ${d}\n`;
+      });
+    }
+    return text.trim();
+  }
+  return String(content || "");
+};
+
+// Check if the history already has a structured legal response
+const hasPriorStructuredAnalysis = (messages: any[]): boolean => {
+  return (messages || []).some(
+    m => m.role === "assistant" && typeof m.content === "object" && m.content !== null && "assessment" in m.content
+  );
+};
+
+// ── Node: Generate Response (Initial Structured) ──────────────────────────────
 const generateResponse = async (state: typeof ChatStateAnnotation.State) => {
   const model = getModel();
   const structuredModel = model.withStructuredOutput(LegalResponseSchema);
@@ -142,7 +186,9 @@ const generateResponse = async (state: typeof ChatStateAnnotation.State) => {
   };
   const issueLabel = categoryLabels[state.classification] ?? "Workplace Issue";
 
-  const historyText = (state.messages || []).map(m => `${m.role}: ${m.content}`).join("\n");
+  const historyText = (state.messages || [])
+    .map(m => `${m.role}: ${formatMessageContent(m.content)}`)
+    .join("\n");
 
   const prompt = `You are NyayaBot, a strict Indian labour law assistant.
 
@@ -152,7 +198,7 @@ CRITICAL RULES FOR BREVITY (VIOLATION WILL CAUSE SYSTEM CRASH):
 3. Action Plan MUST have exactly 3 steps. Never use "Step 1" as a title, use actual action names (e.g. "Draft Complaint").
 4. Evidence MUST have a maximum of 3 items.
 5. Do NOT invent legal procedures. Use the provided context. If context is missing, use general POSH/Labour law knowledge but keep it brief.
-6. Name exact offices (Labour Court, ICC) instead of "appropriate authority".
+6. Name exact offices (Labour Court, ICC) or relevant department name.
 
 CONVERSATION HISTORY:
 ${historyText}
@@ -167,10 +213,12 @@ USER QUERY: ${state.input}`;
   return { response: result };
 };
 
-// ── Node: Generate Conversational Response ────────────────────────────────────
+// ── Node: Generate Conversational Response (Greetings/Non-Legal) ──────────────
 const generateConversationalResponse = async (state: typeof ChatStateAnnotation.State) => {
   const model = getModel();
-  const historyText = (state.messages || []).map(m => `${m.role}: ${m.content}`).join("\n");
+  const historyText = (state.messages || [])
+    .map(m => `${m.role}: ${formatMessageContent(m.content)}`)
+    .join("\n");
 
   const prompt = `You are NyayaBot, an AI assistant for Indian labour law.
 The user's query is non-legal or a greeting. Respond politely and concisely. If they say hi, greet them back and ask how you can help with their workplace issues.
@@ -184,6 +232,30 @@ User Query: ${state.input}
   return { response: result.content.toString() };
 };
 
+// ── Node: Generate Conversational Follow-up Response (Legal Follow-ups) ───────
+const generateFollowUpResponse = async (state: typeof ChatStateAnnotation.State) => {
+  const model = getModel();
+  const historyText = (state.messages || [])
+    .map(m => `${m.role}: ${formatMessageContent(m.content)}`)
+    .join("\n");
+
+  const prompt = `You are NyayaBot, an AI assistant for Indian labour law.
+The user is asking a follow-up question regarding their workplace issue. Answer their question directly, accurately, and concisely based on the legal context provided below and the conversation history.
+
+Do NOT output a JSON structure. Respond in standard, conversational Markdown. Make sure your tone is helpful, professional, and clear.
+
+LEGAL CONTEXT:
+${state.context}
+
+CONVERSATION HISTORY:
+${historyText}
+
+USER QUERY: ${state.input}`;
+
+  const result = await model.invoke(prompt);
+  return { response: result.content.toString() };
+};
+
 // ── Graph ─────────────────────────────────────────────────────────────────────
 
 const routeAfterClassification = (state: typeof ChatStateAnnotation.State) => {
@@ -193,6 +265,13 @@ const routeAfterClassification = (state: typeof ChatStateAnnotation.State) => {
   return "retrieveDocuments";
 };
 
+const routeAfterBuildContext = (state: typeof ChatStateAnnotation.State) => {
+  if (hasPriorStructuredAnalysis(state.messages)) {
+    return "generateFollowUpResponse";
+  }
+  return "generateResponse";
+};
+
 const workflow = new StateGraph(ChatStateAnnotation)
   .addNode("validateInput", validateInput)
   .addNode("classifyIssue", classifyIssue)
@@ -200,12 +279,14 @@ const workflow = new StateGraph(ChatStateAnnotation)
   .addNode("buildContext", buildContext)
   .addNode("generateResponse", generateResponse)
   .addNode("generateConversationalResponse", generateConversationalResponse)
+  .addNode("generateFollowUpResponse", generateFollowUpResponse)
   .addEdge("__start__", "validateInput")
   .addEdge("validateInput", "classifyIssue")
   .addConditionalEdges("classifyIssue", routeAfterClassification)
   .addEdge("retrieveDocuments", "buildContext")
-  .addEdge("buildContext", "generateResponse")
+  .addConditionalEdges("buildContext", routeAfterBuildContext)
   .addEdge("generateResponse", "__end__")
+  .addEdge("generateFollowUpResponse", "__end__")
   .addEdge("generateConversationalResponse", "__end__");
 
 export const appGraph = workflow.compile();
