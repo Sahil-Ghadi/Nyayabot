@@ -113,8 +113,9 @@ export default function ConsultationPage() {
           if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
+              const nodeData = Object.values(data)[0] as any;
               // Update state as it streams through nodes
-              lastState = { ...lastState, ...Object.values(data)[0] };
+              lastState = { ...lastState, ...(nodeData || {}) };
               setStreamState({ ...lastState });
             } catch (e) {
               console.error("Error parsing stream chunk", e);
@@ -143,7 +144,10 @@ export default function ConsultationPage() {
 
         setMessages((prev) => [...prev, { role: "assistant", content }]);
         // Save Assistant Message to Firestore
-        await addMessage(currentChatId, "assistant", content, { citations: lastState.citations || [] });
+        await addMessage(currentChatId, "assistant", content, { 
+          citations: lastState.citations || [],
+          classification: lastState.classification || null
+        });
         setStreamState(null);
       }
     } catch (error) {

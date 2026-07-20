@@ -2,7 +2,7 @@ import { ChatOllama } from "@langchain/ollama";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 // Toggle this variable to easily switch between "ollama" and "gemini"
-const MODEL_PROVIDER: "ollama" | "gemini" = "ollama";
+const MODEL_PROVIDER: "ollama" | "gemini" = "gemini";
 
 export const getModel = () => {
   if (MODEL_PROVIDER === "ollama") {

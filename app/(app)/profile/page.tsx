@@ -175,6 +175,7 @@ export default function ProfilePage() {
   const [totalConsultations, setTotalConsultations] = useState(0);
   const [topCategory, setTopCategory] = useState<string | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -188,18 +189,46 @@ export default function ProfilePage() {
         // Count classifications across all chats
         const counts: Record<string, number> = {};
         LEGAL_CATEGORIES.forEach((c) => (counts[c] = 0));
+        const history = [];
 
         for (const chat of chats) {
           const messages = await getMessages(chat.id);
+          const chatCategories = new Set<string>();
+
           for (const msg of messages) {
-            const classification =
+            const classificationRaw =
               (msg as any).classification ||
               (msg as any).metadata?.classification;
-            if (classification && LEGAL_CATEGORIES.includes(classification as any)) {
-              counts[classification] = (counts[classification] || 0) + 1;
+            
+            const classifications = Array.isArray(classificationRaw)
+              ? classificationRaw
+              : (classificationRaw ? [classificationRaw] : []);
+
+            for (const c of classifications) {
+              if (c && LEGAL_CATEGORIES.includes(c as any)) {
+                counts[c] = (counts[c] || 0) + 1;
+                chatCategories.add(c);
+              }
             }
           }
+
+          let date = new Date();
+          if ((chat as any).createdAt?.toDate) {
+            date = (chat as any).createdAt.toDate();
+          } else if ((chat as any).createdAt) {
+            date = new Date((chat as any).createdAt);
+          }
+
+          history.push({
+            id: chat.id,
+            title: (chat as any).title || "Legal Consultation",
+            date,
+            categories: Array.from(chatCategories)
+          });
         }
+
+        history.sort((a, b) => b.date.getTime() - a.date.getTime());
+        setChatHistory(history);
 
         const result: CategoryStats[] = LEGAL_CATEGORIES.map((c) => ({
           category: c,
@@ -445,6 +474,51 @@ export default function ProfilePage() {
                 </div>
               </motion.div>
             </div>
+
+            {/* Consultation History List */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="mt-8 glass-panel p-8 rounded-2xl border-white/5"
+            >
+              <h3 className="text-xl font-serif font-bold text-white mb-6 flex items-center gap-2">
+                <span className="w-1 h-5 bg-brand-gold rounded-full block" />
+                Consultation History
+              </h3>
+              
+              {chatHistory.length === 0 ? (
+                <p className="text-brand-text-secondary">No consultations found.</p>
+              ) : (
+                <div className="space-y-4">
+                  {chatHistory.map((chat) => (
+                    <div key={chat.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-white font-medium mb-1">{chat.title}</h4>
+                        <p className="text-xs text-brand-text-secondary">{chat.date.toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {chat.categories.length > 0 ? (
+                          chat.categories.map((cat: string) => {
+                            const config = CATEGORY_CONFIG[cat];
+                            return config ? (
+                              <div key={cat} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border" style={{ borderColor: `${config.color}30`, backgroundColor: `${config.color}15` }}>
+                                <config.icon className="w-3 h-3" style={{ color: config.color }} />
+                                <span className="text-[10px] font-medium tracking-wide uppercase" style={{ color: config.color }}>{config.label}</span>
+                              </div>
+                            ) : null;
+                          })
+                        ) : (
+                          <div className="px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] font-medium tracking-wide uppercase text-brand-text-secondary">
+                            Uncategorized
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           </>
         )}
       </motion.div>

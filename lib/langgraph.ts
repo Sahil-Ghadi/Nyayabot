@@ -92,11 +92,14 @@ const classifyIssue = async (state: typeof ChatStateAnnotation.State) => {
   // LLM fallback — qwen 2.5:3b friendly: short, direct prompt
   const model = getModel();
   const result = await model.invoke(
-    `You are a classifier. Given the workplace issue below, output a comma-separated list of ALL relevant categories from: SALARY_DISPUTE, WRONGFUL_TERMINATION, POSH, LEAVE_DENIAL, STATUTORY_BENEFITS, CONTRACT_DISPUTE, OTHER_LABOUR, GREETING, NON_LEGAL.
+    `You are a classifier. Given the user input below, output a comma-separated list of ALL relevant categories from: SALARY_DISPUTE, WRONGFUL_TERMINATION, POSH, LEAVE_DENIAL, STATUTORY_BENEFITS, CONTRACT_DISPUTE, OTHER_LABOUR, GREETING, NON_LEGAL, VAGUE.
 
-Issue: "${state.input}"
+Input: "${state.input}"
 
 Rules:
+- If the input is just a greeting, output GREETING.
+- If the input is about a non-legal topic or personal chatter (e.g., "I am lazy", "I like apples"), output NON_LEGAL.
+- If the input asks for legal help but is too vague or lacks sufficient detail (e.g. "help me", "I have a problem"), output VAGUE.
 - Output ONLY category names separated by commas, nothing else.
 - If multiple apply, list all.
 - Example output: SALARY_DISPUTE,WRONGFUL_TERMINATION`
@@ -108,7 +111,7 @@ Rules:
     .map(s => s.trim())
     .filter(s =>
       ["SALARY_DISPUTE", "WRONGFUL_TERMINATION", "POSH", "LEAVE_DENIAL",
-        "STATUTORY_BENEFITS", "CONTRACT_DISPUTE", "OTHER_LABOUR", "GREETING", "NON_LEGAL"].includes(s)
+        "STATUTORY_BENEFITS", "CONTRACT_DISPUTE", "OTHER_LABOUR", "GREETING", "NON_LEGAL", "VAGUE"].includes(s)
     );
 
   return { classification: categories.length > 0 ? categories : ["OTHER_LABOUR"] };
@@ -311,13 +314,22 @@ All three fields (actionPlan, evidence, deadlines) are mandatory.`
 // ── Node: Conversational / Greeting ───────────────────────────────────────────
 const generateConversationalResponse = async (state: typeof ChatStateAnnotation.State) => {
   const model = getModel();
-  const result = await model.invoke(
-    `You are NyayaBot, an Indian labour law assistant. Respond warmly and briefly.
-If the user greeted you, greet back and ask how you can help with their workplace issue.
-If non-legal, politely redirect to workplace/labour topics.
+  
+  const cats = Array.isArray(state.classification) ? state.classification : [state.classification];
+  
+  let promptStr = `You are NyayaBot, an expert Indian labour law assistant. Respond warmly and briefly (max 2 sentences).`;
+  
+  if (cats.includes("VAGUE")) {
+    promptStr += `\nThe user asked a vague question. Ask them to provide more specific details about their workplace or employment issue so you can give them proper legal advice.`;
+  } else if (cats.includes("NON_LEGAL") || cats.includes("GREETING")) {
+    promptStr += `\nThe user either greeted you or asked about a non-legal topic. Acknowledge them briefly and politely guide the conversation back to Indian labour law or workplace issues.`;
+  } else {
+    promptStr += `\nThe user said something conversational. Acknowledge them briefly and politely guide the conversation back to Indian labour law or workplace issues.`;
+  }
 
-User: ${state.input}`
-  );
+  promptStr += `\n\nUser: ${state.input}`;
+
+  const result = await model.invoke(promptStr);
   return { response: result.content.toString() };
 };
 
@@ -346,12 +358,20 @@ Respond in clear Markdown. Do not output JSON.`
   return { response: result.content.toString() };
 };
 
-// ── Routing ───────────────────────────────────────────────────────────────────
 const routeAfterClassification = (state: typeof ChatStateAnnotation.State) => {
   const cats = Array.isArray(state.classification) ? state.classification : [state.classification];
-  if (cats.includes("GREETING") || (cats.length === 1 && cats[0] === "NON_LEGAL")) {
+  
+  // If the input is conversational, non-legal, or too vague, route to conversational node.
+  // Also, if it fell back to OTHER_LABOUR but is extremely short (less than 4 words), treat it as vague.
+  if (
+    cats.includes("GREETING") || 
+    cats.includes("NON_LEGAL") || 
+    cats.includes("VAGUE") || 
+    (cats.includes("OTHER_LABOUR") && state.input.trim().split(/\s+/).length < 4)
+  ) {
     return "generateConversationalResponse";
   }
+  
   return "retrieveDocuments";
 };
 
